@@ -18,7 +18,6 @@ class DocumentController extends BaseController
 
     public function index(): void
     {
-        $userId = auth_id();
         $search = trim($_GET['q'] ?? '');
         $sort = trim($_GET['sort'] ?? 'created_at_desc');
 
@@ -31,13 +30,24 @@ class DocumentController extends BaseController
             }
         }
 
-        $totalDocs = Document::countByUser($userId, $search);
-        $totalPages = (int)ceil($totalDocs / $perPage);
-        if ($totalPages > 0 && $page > $totalPages) {
-            $page = $totalPages;
+        if (auth_check()) {
+            $userId = auth_id();
+            $totalDocs = Document::countByUser($userId, $search);
+            $totalPages = (int)ceil($totalDocs / $perPage);
+            if ($totalPages > 0 && $page > $totalPages) {
+                $page = $totalPages;
+            }
+            $documents = Document::getPaginatedByUser($userId, $page, $perPage, $search, $sort);
+        } else {
+            // Khách trải nghiệm: ban đầu trống hoàn toàn, chỉ hiển thị tệp tải lên trong phiên hiện tại
+            $guestDocIds = $_SESSION['guest_doc_ids'] ?? [];
+            $totalDocs = Document::countByIds($guestDocIds, $search);
+            $totalPages = (int)ceil($totalDocs / $perPage);
+            if ($totalPages > 0 && $page > $totalPages) {
+                $page = $totalPages;
+            }
+            $documents = Document::getPaginatedByIds($guestDocIds, $page, $perPage, $search, $sort);
         }
-
-        $documents = Document::getPaginatedByUser($userId, $page, $perPage, $search, $sort);
 
         $this->render('documents.index', [
             'pageTitle' => 'Tài liệu của tôi - PDF Workspace',
@@ -56,7 +66,7 @@ class DocumentController extends BaseController
 
     public function upload(): void
     {
-        $userId = auth_id();
+        $userId = auth_check() ? auth_id() : 1;
 
         if (empty($_FILES['files'])) {
             $this->json(['success' => false, 'message' => 'Không có tệp nào được chọn.'], 400);
@@ -83,6 +93,12 @@ class DocumentController extends BaseController
             $res = $this->documentService->handleUpload($userId, $fileData);
             if ($res['success']) {
                 $successCount++;
+                if (!auth_check() && !empty($res['id'])) {
+                    if (!isset($_SESSION['guest_doc_ids']) || !is_array($_SESSION['guest_doc_ids'])) {
+                        $_SESSION['guest_doc_ids'] = [];
+                    }
+                    $_SESSION['guest_doc_ids'][] = (int)$res['id'];
+                }
             } else {
                 $failCount++;
             }
@@ -99,7 +115,6 @@ class DocumentController extends BaseController
 
     public function delete(): void
     {
-        $userId = auth_id();
         $id = (int)($_POST['id'] ?? 0);
 
         if ($id <= 0) {
@@ -107,7 +122,17 @@ class DocumentController extends BaseController
             redirect('/documents');
         }
 
-        $deleted = Document::delete($id, $userId);
+        if (auth_check()) {
+            $deleted = Document::delete($id, auth_id());
+        } else {
+            $guestDocIds = $_SESSION['guest_doc_ids'] ?? [];
+            if (in_array($id, $guestDocIds, true)) {
+                $deleted = Document::deleteByAdmin($id);
+                $_SESSION['guest_doc_ids'] = array_values(array_diff($guestDocIds, [$id]));
+            } else {
+                $deleted = false;
+            }
+        }
 
         if ($deleted) {
             flash('success', 'Đã xóa tài liệu thành công.');
@@ -123,14 +148,16 @@ class DocumentController extends BaseController
      */
     public function viewInline(): void
     {
-        $userId = auth_id();
         $id = (int)($_GET['id'] ?? 0);
 
         $user = auth_user();
         if ($user && ($user['role'] ?? '') === 'admin') {
             $doc = Document::findById($id);
+        } elseif (auth_check()) {
+            $doc = Document::findByIdAndUser($id, auth_id());
         } else {
-            $doc = Document::findByIdAndUser($id, $userId);
+            $guestDocIds = $_SESSION['guest_doc_ids'] ?? [];
+            $doc = in_array($id, $guestDocIds, true) ? Document::findById($id) : null;
         }
 
         if (!$doc || !file_exists($doc['file_path'])) {
@@ -148,14 +175,16 @@ class DocumentController extends BaseController
 
     public function download(): void
     {
-        $userId = auth_id();
         $id = (int)($_GET['id'] ?? 0);
 
         $user = auth_user();
         if ($user && ($user['role'] ?? '') === 'admin') {
             $doc = Document::findById($id);
+        } elseif (auth_check()) {
+            $doc = Document::findByIdAndUser($id, auth_id());
         } else {
-            $doc = Document::findByIdAndUser($id, $userId);
+            $guestDocIds = $_SESSION['guest_doc_ids'] ?? [];
+            $doc = in_array($id, $guestDocIds, true) ? Document::findById($id) : null;
         }
 
         if (!$doc || !file_exists($doc['file_path'])) {
@@ -171,5 +200,34 @@ class DocumentController extends BaseController
         header('Content-Length: ' . filesize($doc['file_path']));
         readfile($doc['file_path']);
         exit;
+    }
+
+    /**
+     * API JSON trả về danh sách tài liệu hiện tại (cho realtime sync khi đăng nhập)
+     */
+    public function listJson(): void
+    {
+        if (auth_check()) {
+            $docs = Document::findByUser(auth_id(), null, 'created_at_desc');
+        } else {
+            $guestDocIds = $_SESSION['guest_doc_ids'] ?? [];
+            $docs = !empty($guestDocIds) ? Document::findByIds($guestDocIds, null, 'created_at_desc') : [];
+        }
+
+        $list = [];
+        foreach ($docs as $d) {
+            $list[] = [
+                'id' => (int)$d['id'],
+                'original_filename' => $d['original_filename'],
+                'total_pages' => (int)$d['total_pages'],
+                'file_size' => (int)$d['file_size'],
+                'formatted_size' => format_bytes((int)$d['file_size']),
+            ];
+        }
+
+        $this->json([
+            'success' => true,
+            'documents' => $list,
+        ]);
     }
 }

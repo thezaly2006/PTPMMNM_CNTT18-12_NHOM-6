@@ -185,6 +185,19 @@
             border-color: rgba(99, 102, 241, 0.25);
         }
 
+        .hover-lift {
+            transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .hover-lift:hover {
+            transform: translateY(-2px);
+        }
+        .hover-bg-subtle {
+            transition: background-color 0.18s ease;
+        }
+        .hover-bg-subtle:hover {
+            background-color: rgba(241, 245, 249, 0.7) !important;
+        }
+
         .pulse-dot {
             width: 8px;
             height: 8px;
@@ -232,6 +245,16 @@
                     <i data-lucide="users" style="width: 17px; height: 17px;"></i>
                 </div>
                 <span>Quản lý người dùng</span>
+            </a>
+
+            <a href="/admin/subscriptions" class="nav-link-custom <?php echo ($activeNav ?? '') === 'admin_subscriptions' ? 'active' : ''; ?>">
+                <div class="nav-icon-box" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">
+                    <i data-lucide="credit-card" style="width: 17px; height: 17px;"></i>
+                </div>
+                <div class="d-flex justify-content-between align-items-center flex-grow-1">
+                    <span>Đăng ký gói & Doanh thu</span>
+                    <span class="badge bg-warning text-dark fw-bold" style="font-size: 0.6rem;">MỚI</span>
+                </div>
             </a>
 
             <a href="/admin/documents" class="nav-link-custom <?php echo ($activeNav ?? '') === 'admin_documents' ? 'active' : ''; ?>">

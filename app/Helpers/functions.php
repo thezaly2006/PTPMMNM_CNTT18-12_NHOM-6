@@ -51,15 +51,27 @@ if (!function_exists('auth_user')) {
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
-        if (!empty($_SESSION['user']) && empty($_SESSION['user']['role'])) {
+        if (!empty($_SESSION['user']['id'])) {
             try {
                 $u = \App\Models\User::findById((int)$_SESSION['user']['id']);
                 if ($u) {
                     $_SESSION['user']['role'] = $u['role'] ?? 'user';
+                    $_SESSION['user']['tokens'] = (int)($u['tokens'] ?? 0);
+                    $_SESSION['user']['plan_tier'] = $u['plan_tier'] ?? 'free';
+                    $_SESSION['user']['plan_expires_at'] = $u['plan_expires_at'] ?? null;
+                    $_SESSION['user']['has_unlimited'] = \App\Models\User::hasUnlimitedTokens($u);
                 }
             } catch (\Throwable $e) {}
         }
         return $_SESSION['user'] ?? null;
+    }
+}
+
+if (!function_exists('has_unlimited_tokens')) {
+    function has_unlimited_tokens(?array $user = null): bool
+    {
+        $u = $user ?? auth_user();
+        return \App\Models\User::hasUnlimitedTokens($u);
     }
 }
 
@@ -68,6 +80,13 @@ if (!function_exists('auth_id')) {
     {
         $user = auth_user();
         return $user ? (int)$user['id'] : null;
+    }
+}
+
+if (!function_exists('auth_check')) {
+    function auth_check(): bool
+    {
+        return auth_user() !== null;
     }
 }
 

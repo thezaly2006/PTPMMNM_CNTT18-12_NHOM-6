@@ -8,6 +8,7 @@ use App\Models\Document;
 use App\Models\EditPlan;
 use App\Models\ExportJob;
 use App\Models\Output;
+use App\Models\User;
 use App\Services\PdfEngineService;
 
 class ExportController extends BaseController
@@ -24,7 +25,33 @@ class ExportController extends BaseController
      */
     public function exportFromPlan(): void
     {
+        // Yêu cầu đăng nhập trước khi xuất file PDF
+        if (!auth_check()) {
+            $this->json([
+                'success' => false,
+                'require_login' => true,
+                'message' => 'Bạn cần đăng nhập tài khoản để xuất tài liệu PDF thành phẩm và tạo bản chụp Snapshot an toàn.'
+            ], 401);
+            return;
+        }
+
         $userId = auth_id();
+
+        // Kiểm tra số dư Token trước khi xuất file: Người dùng có gói hoạt động được VÔ HẠN TOKEN
+        $user = User::findById($userId);
+        $requiredTokens = 5;
+        $isUnlimited = User::hasUnlimitedTokens($user);
+
+        if (!$isUnlimited && (int)($user['tokens'] ?? 0) < $requiredTokens) {
+            $this->json([
+                'success' => false,
+                'out_of_tokens' => true,
+                'current_tokens' => (int)($user['tokens'] ?? 0),
+                'required_tokens' => $requiredTokens,
+                'message' => 'Bạn đã sử dụng hết Token! Vui lòng nâng cấp gói Plus, Pro hoặc Premium để tiếp tục xuất tài liệu PDF.',
+            ], 402);
+            return;
+        }
 
         $rawData = file_get_contents('php://input');
         $data = json_decode($rawData, true);
@@ -97,10 +124,18 @@ class ExportController extends BaseController
             // 7. Đánh dấu hoàn thành
             ExportJob::markCompleted($jobId);
 
+            // 8. Khấu trừ token nếu không phải unlimited
+            if (!$isUnlimited) {
+                User::deductTokens($userId, $requiredTokens, 'export', "Xuất file PDF: {$outputFilename} (Job #{$jobId})");
+            }
+            $updatedUser = User::findById($userId);
+            $remainingTokens = $isUnlimited ? 'unlimited' : (int)($updatedUser['tokens'] ?? 0);
+
             $this->json([
                 'success' => true,
                 'job_id' => $jobId,
                 'download_token' => $downloadToken,
+                'remaining_tokens' => $remainingTokens,
                 'message' => 'Tài liệu PDF đã được xuất thành công!',
             ]);
         } catch (\Throwable $e) {
@@ -120,8 +155,12 @@ class ExportController extends BaseController
      */
     public function showMerge(): void
     {
-        $userId = auth_id();
-        $userDocuments = Document::findByUser($userId, null, 'created_at_desc');
+        if (auth_check()) {
+            $userDocuments = Document::findByUser(auth_id(), null, 'created_at_desc');
+        } else {
+            $guestDocIds = $_SESSION['guest_doc_ids'] ?? [];
+            $userDocuments = !empty($guestDocIds) ? Document::findByIds($guestDocIds, null, 'created_at_desc') : [];
+        }
 
         $this->render('merge.index', [
             'pageTitle' => 'Ghép PDF - PDF Workspace',
@@ -135,15 +174,26 @@ class ExportController extends BaseController
      */
     public function showSplit(): void
     {
-        $userId = auth_id();
         $docId = !empty($_GET['doc_id']) ? (int)$_GET['doc_id'] : null;
-        $userDocuments = Document::findByUser($userId, null, 'created_at_desc');
 
-        $selectedDoc = null;
-        if ($docId) {
-            $selectedDoc = Document::findByIdAndUser($docId, $userId);
-        } elseif (!empty($userDocuments)) {
-            $selectedDoc = $userDocuments[0];
+        if (auth_check()) {
+            $userId = auth_id();
+            $userDocuments = Document::findByUser($userId, null, 'created_at_desc');
+            $selectedDoc = null;
+            if ($docId) {
+                $selectedDoc = Document::findByIdAndUser($docId, $userId);
+            } elseif (!empty($userDocuments)) {
+                $selectedDoc = $userDocuments[0];
+            }
+        } else {
+            $guestDocIds = $_SESSION['guest_doc_ids'] ?? [];
+            $userDocuments = !empty($guestDocIds) ? Document::findByIds($guestDocIds, null, 'created_at_desc') : [];
+            $selectedDoc = null;
+            if ($docId && in_array($docId, $guestDocIds, true)) {
+                $selectedDoc = Document::findById($docId);
+            } elseif (!empty($userDocuments)) {
+                $selectedDoc = $userDocuments[0];
+            }
         }
 
         $this->render('split.index', [
@@ -159,6 +209,16 @@ class ExportController extends BaseController
      */
     public function executeSplit(): void
     {
+        // Yêu cầu đăng nhập trước khi tách xuất file PDF
+        if (!auth_check()) {
+            $this->json([
+                'success' => false,
+                'require_login' => true,
+                'message' => 'Bạn cần đăng nhập tài khoản để tách và xuất các tệp PDF thành phẩm.'
+            ], 401);
+            return;
+        }
+
         $userId = auth_id();
         $rawData = file_get_contents('php://input');
         $data = json_decode($rawData, true);
@@ -174,6 +234,22 @@ class ExportController extends BaseController
 
         if (empty($groups)) {
             $this->json(['success' => false, 'message' => 'Vui lòng cấu hình ít nhất 1 nhóm trang để tách.'], 400);
+            return;
+        }
+
+        // Kiểm tra số dư Token trước khi tách: Người dùng có gói hoạt động được VÔ HẠN TOKEN
+        $user = User::findById($userId);
+        $requiredTokens = count($groups) * 5;
+        $isUnlimited = User::hasUnlimitedTokens($user);
+
+        if (!$isUnlimited && (int)($user['tokens'] ?? 0) < $requiredTokens) {
+            $this->json([
+                'success' => false,
+                'out_of_tokens' => true,
+                'current_tokens' => (int)($user['tokens'] ?? 0),
+                'required_tokens' => $requiredTokens,
+                'message' => 'Bạn không đủ Token để tách ' . count($groups) . ' nhóm tệp (cần ' . $requiredTokens . ' Tokens, hiện có ' . (int)($user['tokens'] ?? 0) . ' Tokens). Vui lòng nâng cấp gói để tiếp tục!',
+            ], 402);
             return;
         }
 
@@ -249,6 +325,10 @@ class ExportController extends BaseController
                 );
                 ExportJob::markCompleted($jobId);
 
+                if (!$isUnlimited) {
+                    User::deductTokens($userId, 5, 'split', "Tách nhóm trang PDF: {$grpName} (Job #{$jobId})");
+                }
+
                 $results[] = [
                     'group_index' => $idx + 1,
                     'filename' => $grpName,
@@ -267,8 +347,12 @@ class ExportController extends BaseController
             }
         }
 
+        $updatedUser = User::findById($userId);
+        $remainingTokens = $isUnlimited ? 'unlimited' : (int)($updatedUser['tokens'] ?? 0);
+
         $this->json([
             'success' => true,
+            'remaining_tokens' => $remainingTokens,
             'results' => $results,
         ]);
     }

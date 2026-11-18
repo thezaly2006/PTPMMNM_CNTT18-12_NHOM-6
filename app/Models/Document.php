@@ -346,4 +346,154 @@ class Document
         Database::query("DELETE FROM documents WHERE id = :id", ['id' => $id]);
         return true;
     }
+
+    public static function findByIds(array $ids, ?string $search = null, string $sort = 'created_at_desc'): array
+    {
+        $ids = array_filter(array_map('intval', $ids), fn($v) => $v > 0);
+        if (empty($ids)) {
+            return [];
+        }
+
+        $inClause = implode(',', $ids);
+        $sql = "SELECT * FROM documents WHERE id IN ({$inClause})";
+        $params = [];
+
+        if (!empty($search)) {
+            $sql .= " AND original_filename LIKE :search";
+            $params['search'] = '%' . $search . '%';
+        }
+
+        switch ($sort) {
+            case 'name_asc':
+                $sql .= " ORDER BY original_filename ASC";
+                break;
+            case 'name_desc':
+                $sql .= " ORDER BY original_filename DESC";
+                break;
+            case 'size_desc':
+                $sql .= " ORDER BY file_size DESC";
+                break;
+            case 'pages_desc':
+                $sql .= " ORDER BY total_pages DESC";
+                break;
+            case 'created_at_asc':
+                $sql .= " ORDER BY created_at ASC";
+                break;
+            case 'created_at_desc':
+            default:
+                $sql .= " ORDER BY created_at DESC";
+                break;
+        }
+
+        $documents = Database::fetchAll($sql, $params);
+
+        foreach ($documents as &$doc) {
+            if (file_exists($doc['file_path'])) {
+                try {
+                    $fpdi = new \setasign\Fpdi\Fpdi();
+                    $actual = (int)$fpdi->setSourceFile($doc['file_path']);
+                    if ($actual > 0 && $actual !== (int)$doc['total_pages']) {
+                        $doc['total_pages'] = $actual;
+                        Database::query("UPDATE documents SET total_pages = :tp WHERE id = :id", [
+                            'tp' => $actual,
+                            'id' => $doc['id']
+                        ]);
+                    }
+                } catch (\Throwable $e) {}
+            }
+        }
+        unset($doc);
+
+        return $documents;
+    }
+
+    public static function countByIds(array $ids, ?string $search = null): int
+    {
+        $ids = array_filter(array_map('intval', $ids), fn($v) => $v > 0);
+        if (empty($ids)) {
+            return 0;
+        }
+
+        $inClause = implode(',', $ids);
+        $sql = "SELECT COUNT(*) AS total FROM documents WHERE id IN ({$inClause})";
+        $params = [];
+
+        if (!empty($search)) {
+            $sql .= " AND original_filename LIKE :search";
+            $params['search'] = '%' . $search . '%';
+        }
+
+        $res = Database::fetchOne($sql, $params);
+        return (int)($res['total'] ?? 0);
+    }
+
+    public static function getPaginatedByIds(
+        array $ids,
+        int $page = 1,
+        int $perPage = 10,
+        ?string $search = null,
+        string $sort = 'created_at_desc'
+    ): array {
+        $ids = array_filter(array_map('intval', $ids), fn($v) => $v > 0);
+        if (empty($ids)) {
+            return [];
+        }
+
+        $page = max(1, $page);
+        $perPage = max(1, min(100, $perPage));
+        $offset = ($page - 1) * $perPage;
+
+        $inClause = implode(',', $ids);
+        $sql = "SELECT * FROM documents WHERE id IN ({$inClause})";
+        $params = [];
+
+        if (!empty($search)) {
+            $sql .= " AND original_filename LIKE :search";
+            $params['search'] = '%' . $search . '%';
+        }
+
+        switch ($sort) {
+            case 'name_asc':
+                $sql .= " ORDER BY original_filename ASC";
+                break;
+            case 'name_desc':
+                $sql .= " ORDER BY original_filename DESC";
+                break;
+            case 'size_desc':
+                $sql .= " ORDER BY file_size DESC";
+                break;
+            case 'pages_desc':
+                $sql .= " ORDER BY total_pages DESC";
+                break;
+            case 'created_at_asc':
+                $sql .= " ORDER BY created_at ASC";
+                break;
+            case 'created_at_desc':
+            default:
+                $sql .= " ORDER BY created_at DESC";
+                break;
+        }
+
+        $sql .= " LIMIT {$perPage} OFFSET {$offset}";
+        $documents = Database::fetchAll($sql, $params);
+
+        foreach ($documents as &$doc) {
+            if (file_exists($doc['file_path'])) {
+                try {
+                    $fpdi = new \setasign\Fpdi\Fpdi();
+                    $actual = (int)$fpdi->setSourceFile($doc['file_path']);
+                    if ($actual > 0 && $actual !== (int)$doc['total_pages']) {
+                        $doc['total_pages'] = $actual;
+                        Database::query("UPDATE documents SET total_pages = :tp WHERE id = :id", [
+                            'tp' => $actual,
+                            'id' => $doc['id']
+                        ]);
+                    }
+                } catch (\Throwable $e) {}
+            }
+        }
+        unset($doc);
+
+        return $documents;
+    }
 }

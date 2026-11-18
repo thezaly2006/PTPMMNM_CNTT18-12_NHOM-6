@@ -73,6 +73,8 @@
                         <th>Họ và tên</th>
                         <th>Email</th>
                         <th>Vai trò</th>
+                        <th>Gói cước</th>
+                        <th>Số dư Token</th>
                         <th>Tài liệu</th>
                         <th>Bản xuất</th>
                         <th>Trạng thái</th>
@@ -106,6 +108,33 @@
                                 <?php else: ?>
                                     <span class="badge bg-secondary-subtle text-secondary border px-2 py-1">
                                         <i data-lucide="user" style="width: 12px; height: 12px;" class="me-1"></i> Người dùng
+                                    </span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php 
+                                    $tier = $u['plan_tier'] ?? 'free';
+                                    $tierColors = [
+                                        'free' => 'bg-secondary-subtle text-secondary border',
+                                        'plus' => 'bg-primary-subtle text-primary border border-primary-subtle',
+                                        'pro' => 'bg-info-subtle text-info border border-info-subtle',
+                                        'premium' => 'bg-warning-subtle text-warning-emphasis border border-warning-subtle',
+                                    ];
+                                    $badgeClass = $tierColors[$tier] ?? 'bg-light text-dark border';
+                                ?>
+                                <span class="badge <?php echo $badgeClass; ?> text-uppercase px-2 py-1" style="font-size: 0.68rem; letter-spacing: 0.5px;">
+                                    <?php echo htmlspecialchars($tier); ?>
+                                </span>
+                            </td>
+                            <td>
+                                <?php if (($u['role'] ?? '') === 'admin' || ($u['plan_tier'] ?? '') === 'premium'): ?>
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle fw-bold">
+                                        <i data-lucide="infinity" style="width: 12px; height: 12px;" class="me-1"></i> Vô hạn
+                                    </span>
+                                <?php else: ?>
+                                    <span class="badge bg-light text-dark border fw-bold">
+                                        <i data-lucide="coins" style="width: 12px; height: 12px; color: #f59e0b;" class="me-1"></i>
+                                        <?php echo number_format((int)($u['tokens'] ?? 0)); ?>
                                     </span>
                                 <?php endif; ?>
                             </td>
@@ -163,6 +192,14 @@
                                             <button type="button" class="dropdown-item small d-flex align-items-center gap-2" onclick="openResetPasswordModal(<?php echo $u['id']; ?>, '<?php echo htmlspecialchars($u['name'], ENT_QUOTES); ?>')">
                                                 <i data-lucide="key" style="width: 14px; height: 14px;"></i>
                                                 <span>Đặt lại mật khẩu</span>
+                                            </button>
+                                        </li>
+
+                                        <!-- Điều chỉnh Token & Gói cước -->
+                                        <li>
+                                            <button type="button" class="dropdown-item small d-flex align-items-center gap-2" onclick="openAdjustTokensModal(<?php echo $u['id']; ?>, '<?php echo htmlspecialchars($u['name'], ENT_QUOTES); ?>', <?php echo (int)($u['tokens'] ?? 0); ?>, '<?php echo $u['plan_tier'] ?? 'free'; ?>')">
+                                                <i data-lucide="coins" style="width: 14px; height: 14px; color: #f59e0b;"></i>
+                                                <span>Cộng Token / Đổi gói</span>
                                             </button>
                                         </li>
 
@@ -305,6 +342,77 @@
     </div>
 </div>
 
+<!-- Modal Điều chỉnh Token & Gói Cước -->
+<div class="modal fade" id="adjustTokensModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form action="/admin/users/tokens" method="POST">
+                <?php echo csrf_field(); ?>
+                <input type="hidden" name="user_id" id="adjustTokenUserId">
+                <div class="modal-header border-bottom bg-warning-subtle text-dark">
+                    <h6 class="modal-title fw-bold d-flex align-items-center gap-2">
+                        <i data-lucide="coins" style="width: 18px; height: 18px; color: #d97706;"></i>
+                        <span>Điều chỉnh Token & Gói Cước</span>
+                    </h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="p-3 bg-light rounded-3 mb-3 border">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted small">Người dùng:</span>
+                            <strong id="adjustTokenUserName" class="text-dark"></strong>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="text-muted small">Số dư Token hiện tại:</span>
+                            <span class="badge bg-white text-dark border fw-bold" id="adjustTokenCurrentBalance"></span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="text-muted small">Gói hiện tại:</span>
+                            <span class="badge bg-primary text-uppercase" id="adjustTokenCurrentTier"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-dark">Cộng/Trừ số lượng Token</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i data-lucide="plus-minus" style="width: 15px; height: 15px;"></i></span>
+                            <input type="number" class="form-control" name="amount" id="adjustTokenAmount" value="100" step="10" placeholder="VD: 100 hoặc -50">
+                        </div>
+                        <div class="d-flex gap-1 mt-2">
+                            <button type="button" class="btn btn-xs btn-outline-secondary" onclick="setTokenAmount(50)">+50</button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary" onclick="setTokenAmount(100)">+100</button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary" onclick="setTokenAmount(500)">+500</button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary" onclick="setTokenAmount(2000)">+2,000</button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary" onclick="setTokenAmount(10000)">+10,000</button>
+                            <button type="button" class="btn btn-xs btn-outline-danger ms-auto" onclick="setTokenAmount(0)">Đặt 0</button>
+                        </div>
+                        <small class="text-muted" style="font-size: 0.72rem;">Nhập số dương để cộng thêm, số âm để khấu trừ bớt.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-dark">Chuyển sang gói cước</label>
+                        <select class="form-select form-select-sm" name="plan_tier" id="adjustTokenPlanTier">
+                            <option value="free">Gói FREE (50 Tokens khởi tạo)</option>
+                            <option value="plus">Gói PLUS (500 Tokens / chu kỳ)</option>
+                            <option value="pro">Gói PRO (2,000 Tokens / chu kỳ)</option>
+                            <option value="premium">Gói PREMIUM (∞ Không giới hạn Token)</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold text-dark">Lý do điều chỉnh</label>
+                        <input type="text" class="form-control form-control-sm" name="reason" value="Quản trị viên cộng bù Token khuyến mãi" placeholder="Ghi chú vào lịch sử giao dịch">
+                    </div>
+                </div>
+                <div class="modal-footer border-top bg-light">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Hủy</button>
+                    <button type="submit" class="btn btn-warning text-dark fw-bold btn-sm px-3">Lưu thay đổi</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
     function openResetPasswordModal(id, name) {
         document.getElementById('resetPasswordUserId').value = id;
@@ -316,6 +424,21 @@
         document.getElementById('deleteUserId').value = id;
         document.getElementById('deleteUserName').textContent = name;
         new bootstrap.Modal(document.getElementById('deleteUserModal')).show();
+    }
+
+    function openAdjustTokensModal(id, name, currentTokens, currentTier) {
+        document.getElementById('adjustTokenUserId').value = id;
+        document.getElementById('adjustTokenUserName').textContent = name;
+        document.getElementById('adjustTokenCurrentBalance').textContent = Number(currentTokens).toLocaleString('vi-VN') + ' Tokens';
+        document.getElementById('adjustTokenCurrentTier').textContent = (currentTier || 'FREE').toUpperCase();
+        document.getElementById('adjustTokenPlanTier').value = currentTier || 'free';
+        document.getElementById('adjustTokenAmount').value = 100;
+        new bootstrap.Modal(document.getElementById('adjustTokensModal')).show();
+        lucide.createIcons();
+    }
+
+    function setTokenAmount(val) {
+        document.getElementById('adjustTokenAmount').value = val;
     }
 </script>
 

@@ -7,6 +7,7 @@ namespace App\Controllers;
 use App\Helpers\Database;
 use App\Models\Document;
 use App\Models\ExportJob;
+use App\Models\Subscription;
 use App\Models\User;
 
 class AdminController extends BaseController
@@ -93,11 +94,13 @@ class AdminController extends BaseController
         $recentUsers = User::getPaginated(1, 5, null, null, 'created_at_desc');
         $recentExports = ExportJob::getRecentAll(5);
         $recentDocs = Document::getPaginatedForAdmin(1, 5, null, null, 'created_at_desc');
+        $subStats = Subscription::getStats();
 
         $this->render('admin.dashboard', [
             'pageTitle' => 'Tổng quan Quản trị - PDF Workspace',
             'activeNav' => 'admin_dashboard',
             'stats' => $stats,
+            'subStats' => $subStats,
             'storageDetails' => $storageDetails,
             'serverEnv' => $serverEnv,
             'recentUsers' => $recentUsers,
@@ -194,6 +197,36 @@ class AdminController extends BaseController
 
         User::updatePassword($userId, $newPassword);
         flash('success', 'Đã đặt lại mật khẩu cho người dùng thành công.');
+        redirect('/admin/users');
+    }
+
+    public function adjustTokens(): void
+    {
+        $userId = (int)($_POST['user_id'] ?? 0);
+        $amount = (int)($_POST['amount'] ?? 0);
+        $planTier = trim($_POST['plan_tier'] ?? '');
+        $reason = trim($_POST['reason'] ?? '') ?: 'Quản trị viên điều chỉnh hạn mức Token';
+
+        $user = User::findById($userId);
+        if (!$user) {
+            flash('error', 'Không tìm thấy người dùng.');
+            redirect('/admin/users');
+        }
+
+        // Cập nhật số token nếu có
+        if ($amount !== 0) {
+            User::addTokens($userId, $amount, 'admin_adjust', $reason);
+        }
+
+        // Cập nhật gói nếu có
+        if (!empty($planTier) && in_array($planTier, ['free', 'plus', 'pro', 'premium'], true)) {
+            Database::query("UPDATE users SET plan_tier = :plan WHERE id = :id", [
+                'plan' => $planTier,
+                'id' => $userId,
+            ]);
+        }
+
+        flash('success', "Đã điều chỉnh thành công hạn mức Token & Gói cước cho tài khoản {$user['name']}.");
         redirect('/admin/users');
     }
 
@@ -426,5 +459,95 @@ class AdminController extends BaseController
 
         flash('success', "Đã dọn dẹp thành công {$deletedCount} tệp tạm (giải phóng " . format_bytes($freedBytes) . ").");
         redirect('/admin/system');
+    }
+
+    /**
+     * 5. Quản lý Đăng ký Gói cước & Doanh thu
+     */
+    public function subscriptions(): void
+    {
+        $search = trim($_GET['q'] ?? '');
+        $tier = trim($_GET['tier'] ?? '');
+        $status = trim($_GET['status'] ?? '');
+        $cycle = trim($_GET['cycle'] ?? '');
+        $sort = trim($_GET['sort'] ?? 'created_at_desc');
+
+        $page = max(1, (int)($_GET['page'] ?? 1));
+        $perPage = 10;
+        if (!empty($_GET['per_page'])) {
+            $pp = (int)$_GET['per_page'];
+            if (in_array($pp, [10, 20, 50], true)) {
+                $perPage = $pp;
+            }
+        }
+
+        $totalSubs = Subscription::countAll($search, $tier, $status, $cycle);
+        $totalPages = (int)ceil($totalSubs / $perPage);
+        if ($totalPages > 0 && $page > $totalPages) {
+            $page = $totalPages;
+        }
+
+        $subscriptions = Subscription::getPaginated($page, $perPage, $search, $tier, $status, $cycle, $sort);
+        $stats = Subscription::getStats();
+        $tokenTransactions = Subscription::getGlobalTokenTransactions(25);
+        $allUsers = User::getAll();
+
+        $this->render('admin.subscriptions', [
+            'pageTitle' => 'Quản lý Đăng ký Gói & Doanh thu - PDF Workspace',
+            'activeNav' => 'admin_subscriptions',
+            'subscriptions' => $subscriptions,
+            'stats' => $stats,
+            'tokenTransactions' => $tokenTransactions,
+            'allUsers' => $allUsers,
+            'search' => $search,
+            'tier' => $tier,
+            'status' => $status,
+            'cycle' => $cycle,
+            'sort' => $sort,
+            'currentPage' => $page,
+            'perPage' => $perPage,
+            'totalItems' => $totalSubs,
+            'totalPages' => $totalPages,
+            'success' => flash('success'),
+            'error' => flash('error'),
+        ]);
+    }
+
+    public function updateSubscriptionStatus(): void
+    {
+        $subId = (int)($_POST['subscription_id'] ?? 0);
+        $status = trim($_POST['status'] ?? '');
+
+        if (Subscription::updateStatus($subId, $status)) {
+            flash('success', "Đã cập nhật trạng thái đơn hàng #{$subId} thành công ({$status}).");
+        } else {
+            flash('error', 'Trạng thái đơn hàng không hợp lệ.');
+        }
+        redirect('/admin/subscriptions');
+    }
+
+    public function createManualSubscription(): void
+    {
+        $userId = (int)($_POST['user_id'] ?? 0);
+        $planTier = trim($_POST['plan_tier'] ?? 'pro');
+        $billingCycle = trim($_POST['billing_cycle'] ?? 'monthly');
+        $price = (int)($_POST['price'] ?? 0);
+        $tokens = (int)($_POST['tokens_granted'] ?? 0);
+        $paymentMethod = trim($_POST['payment_method'] ?? 'manual_admin');
+
+        $user = User::findById($userId);
+        if (!$user) {
+            flash('error', 'Không tìm thấy người dùng.');
+            redirect('/admin/subscriptions');
+        }
+
+        try {
+            User::upgradePlan($userId, $planTier, $billingCycle, $price, $tokens, $paymentMethod);
+            flash('success', "Đã tạo đơn và kích hoạt thành công gói " . strtoupper($planTier) . " cho {$user['name']}.");
+        } catch (\Throwable $e) {
+            flash('error', 'Lỗi tạo gói: ' . $e->getMessage());
+        }
+
+        redirect('/admin/subscriptions');
     }
 }

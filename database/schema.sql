@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS `users` (
     `name` VARCHAR(100) NOT NULL,
     `email` VARCHAR(191) NOT NULL UNIQUE,
     `password_hash` VARCHAR(255) NOT NULL,
+    `role` VARCHAR(20) NOT NULL DEFAULT 'user',
+    `tokens` INT NOT NULL DEFAULT 50,
+    `plan_tier` VARCHAR(20) NOT NULL DEFAULT 'free',
+    `plan_expires_at` DATETIME NULL DEFAULT NULL,
+    `is_active` TINYINT(1) NOT NULL DEFAULT 1,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_users_email` (`email`)
@@ -122,4 +127,36 @@ CREATE TABLE IF NOT EXISTS `outputs` (
     CONSTRAINT `fk_outputs_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
     INDEX `idx_outputs_user` (`user_id`),
     INDEX `idx_outputs_token` (`download_token`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 9. Bang subscriptions: Lich su dang ky va mua ban goi cuoc cua khach hang
+CREATE TABLE IF NOT EXISTS `subscriptions` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT UNSIGNED NOT NULL,
+    `plan_tier` VARCHAR(20) NOT NULL,
+    `billing_cycle` VARCHAR(20) NOT NULL,
+    `price` INT UNSIGNED NOT NULL DEFAULT 0,
+    `tokens_granted` INT UNSIGNED NOT NULL DEFAULT 0,
+    `payment_method` VARCHAR(50) NOT NULL DEFAULT 'vietqr',
+    `transaction_code` VARCHAR(64) NOT NULL UNIQUE,
+    `status` VARCHAR(20) NOT NULL DEFAULT 'completed',
+    `expires_at` DATETIME NULL,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT `fk_subscriptions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+    INDEX `idx_subscriptions_user` (`user_id`),
+    INDEX `idx_subscriptions_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 10. Bang token_transactions: Lich su bien dong Token (nap, tru, thuong)
+CREATE TABLE IF NOT EXISTS `token_transactions` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `user_id` INT UNSIGNED NOT NULL,
+    `amount` INT NOT NULL,
+    `action` VARCHAR(50) NOT NULL,
+    `description` VARCHAR(255) NULL,
+    `balance_after` INT NOT NULL DEFAULT 0,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT `fk_token_transactions_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+    INDEX `idx_token_transactions_user` (`user_id`),
+    INDEX `idx_token_transactions_created` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

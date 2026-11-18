@@ -87,6 +87,18 @@ class AuthController extends BaseController
             'role' => $user['role'] ?? 'user',
         ];
 
+        // Tự động đồng bộ tài liệu khách tải lên trong phiên sang tài khoản vừa đăng nhập
+        if (!empty($_SESSION['guest_doc_ids'])) {
+            $guestDocIds = array_filter(array_map('intval', $_SESSION['guest_doc_ids']), fn($v) => $v > 0);
+            if (!empty($guestDocIds)) {
+                $inClause = implode(',', $guestDocIds);
+                Database::query("UPDATE documents SET user_id = :uid WHERE id IN ({$inClause})", [
+                    'uid' => (int)$user['id']
+                ]);
+            }
+            unset($_SESSION['guest_doc_ids']);
+        }
+
         if (($user['role'] ?? 'user') === 'admin') {
             flash('success', 'Chào mừng Quản trị viên ' . htmlspecialchars($user['name']) . ' đăng nhập vào Cổng Quản Trị!');
             redirect('/admin');
@@ -94,6 +106,105 @@ class AuthController extends BaseController
             flash('success', 'Chào mừng bạn quay trở lại, ' . htmlspecialchars($user['name']) . '!');
             redirect('/dashboard');
         }
+    }
+
+    /**
+     * API Đăng nhập nhanh qua AJAX (khi đang ở modal yêu cầu đăng nhập)
+     */
+    public function quickLogin(): void
+    {
+        $rawData = file_get_contents('php://input');
+        $data = json_decode($rawData, true);
+        if (!$data) {
+            $data = $_POST;
+        }
+
+        $email = trim($data['email'] ?? '');
+        $password = $data['password'] ?? '';
+        $quickType = trim($data['quick_type'] ?? '');
+
+        if ($quickType === 'demo') {
+            $email = 'demo@pdfworkspace.test';
+            $password = 'Password@123';
+        } elseif ($quickType === 'admin') {
+            $email = 'admin@pdfworkspace.test';
+            $password = 'Admin@123';
+        }
+
+        if (empty($email) || empty($password)) {
+            $this->json(['success' => false, 'message' => 'Vui lòng điền email và mật khẩu.'], 400);
+            return;
+        }
+
+        // Tự động khởi tạo hoặc cập nhật tài khoản Demo (User) nếu chưa khớp
+        if ($email === 'demo@pdfworkspace.test' && $password === 'Password@123') {
+            $checkDemo = User::findByEmail($email);
+            if (!$checkDemo) {
+                User::createWithRole('Sinh Viên Thử Nghiệm', 'demo@pdfworkspace.test', 'Password@123', 'user');
+            } else {
+                if (($checkDemo['role'] ?? '') !== 'user' || !password_verify($password, $checkDemo['password_hash'])) {
+                    $newHash = password_hash('Password@123', PASSWORD_BCRYPT);
+                    Database::query("UPDATE users SET password_hash = :hash, role = 'user', is_active = 1 WHERE id = :id", [
+                        'hash' => $newHash,
+                        'id' => $checkDemo['id']
+                    ]);
+                }
+            }
+        }
+
+        // Tự động khởi tạo hoặc cập nhật tài khoản Admin riêng biệt nếu chưa khớp
+        if ($email === 'admin@pdfworkspace.test' && $password === 'Admin@123') {
+            $checkAdmin = User::findByEmail($email);
+            if (!$checkAdmin) {
+                User::createWithRole('Quản Trị Viên Hệ Thống', 'admin@pdfworkspace.test', 'Admin@123', 'admin');
+            } else {
+                if (($checkAdmin['role'] ?? '') !== 'admin' || !password_verify($password, $checkAdmin['password_hash'])) {
+                    $adminHash = password_hash('Admin@123', PASSWORD_BCRYPT);
+                    Database::query("UPDATE users SET password_hash = :hash, role = 'admin', is_active = 1 WHERE id = :id", [
+                        'hash' => $adminHash,
+                        'id' => $checkAdmin['id']
+                    ]);
+                }
+            }
+        }
+
+        $user = User::findByEmail($email);
+        if (!$user || !password_verify($password, $user['password_hash'])) {
+            $this->json(['success' => false, 'message' => 'Email hoặc mật khẩu không chính xác.'], 401);
+            return;
+        }
+
+        if (isset($user['is_active']) && (int)$user['is_active'] === 0) {
+            $this->json(['success' => false, 'message' => 'Tài khoản của bạn đã bị quản trị viên tạm khóa.'], 403);
+            return;
+        }
+
+        session_regenerate_id(true);
+        $_SESSION['user'] = [
+            'id' => (int)$user['id'],
+            'name' => $user['name'],
+            'email' => $user['email'],
+            'role' => $user['role'] ?? 'user',
+        ];
+
+        // Tự động đồng bộ tài liệu khách tải lên trong phiên sang tài khoản vừa đăng nhập
+        if (!empty($_SESSION['guest_doc_ids'])) {
+            $guestDocIds = array_filter(array_map('intval', $_SESSION['guest_doc_ids']), fn($v) => $v > 0);
+            if (!empty($guestDocIds)) {
+                $inClause = implode(',', $guestDocIds);
+                Database::query("UPDATE documents SET user_id = :uid WHERE id IN ({$inClause})", [
+                    'uid' => (int)$user['id']
+                ]);
+            }
+            unset($_SESSION['guest_doc_ids']);
+        }
+
+        $this->json([
+            'success' => true,
+            'message' => 'Đăng nhập thành công!',
+            'user' => $_SESSION['user'],
+            'csrf_token' => csrf_token(),
+        ]);
     }
 
     public function showRegister(): void
@@ -151,7 +262,20 @@ class AuthController extends BaseController
             'id' => $userId,
             'name' => $name,
             'email' => $email,
+            'role' => 'user',
         ];
+
+        // Tự động đồng bộ tài liệu khách tải lên trong phiên sang tài khoản vừa đăng ký
+        if (!empty($_SESSION['guest_doc_ids'])) {
+            $guestDocIds = array_filter(array_map('intval', $_SESSION['guest_doc_ids']), fn($v) => $v > 0);
+            if (!empty($guestDocIds)) {
+                $inClause = implode(',', $guestDocIds);
+                Database::query("UPDATE documents SET user_id = :uid WHERE id IN ({$inClause})", [
+                    'uid' => $userId
+                ]);
+            }
+            unset($_SESSION['guest_doc_ids']);
+        }
 
         flash('success', 'Tạo tài khoản thành công! Chào mừng bạn đến với PDF Workspace.');
         redirect('/dashboard');

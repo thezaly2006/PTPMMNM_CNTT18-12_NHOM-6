@@ -32,23 +32,61 @@
     }
     /* Left Sidebar: Source Documents */
     .editor-sidebar-left {
-        width: 280px;
-        border-right: 1px solid #e2e8f0;
-        background: #f8fafc;
+        width: 310px;
+        border-right: 1px solid rgba(226, 232, 240, 0.85);
+        background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
         display: flex;
         flex-direction: column;
+        flex-shrink: 0;
     }
     .source-doc-item {
         background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px;
-        padding: 10px 12px;
-        margin-bottom: 8px;
-        transition: all 0.15s ease;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        border-radius: 13px;
+        padding: 12px;
+        margin-bottom: 10px;
+        transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+        position: relative;
     }
     .source-doc-item:hover {
-        border-color: #6366f1;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+        border-color: #818cf8;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px -4px rgba(79, 70, 229, 0.14);
+    }
+    .source-doc-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.12) 0%, rgba(124, 58, 237, 0.14) 100%);
+        color: #4f46e5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: all 0.2s ease;
+    }
+    .source-doc-item:hover .source-doc-icon {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: #ffffff;
+        transform: scale(1.05);
+    }
+    .btn-add-all-pages {
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(124, 58, 237, 0.08) 100%);
+        color: #4338ca;
+        border: 1px solid rgba(79, 70, 229, 0.2);
+        font-weight: 600;
+        border-radius: 8px;
+        font-size: 0.74rem;
+        padding: 4px 10px;
+        transition: all 0.2s ease;
+    }
+    .btn-add-all-pages:hover {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        color: #ffffff;
+        border-color: transparent;
+        box-shadow: 0 4px 10px rgba(79, 70, 229, 0.25);
+        transform: translateY(-1px);
     }
     /* Center Canvas: Page Cards */
     .editor-canvas {
@@ -262,9 +300,13 @@
         <!-- Sidebar trái: Tài liệu nguồn -->
         <div class="editor-sidebar-left p-3">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <span class="fw-bold small text-dark text-uppercase">Tệp nguồn</span>
-                <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.75rem;" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                    <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Thêm tệp
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fw-bold small text-dark text-uppercase" style="letter-spacing: 0.05em; font-size: 0.74rem;">Tệp nguồn</span>
+                    <span class="badge rounded-pill bg-white text-secondary border px-2 py-0" style="font-size: 0.65rem;" id="sourceDocsCountBadge"><?php echo count($userDocuments); ?> tệp</span>
+                </div>
+                <button class="btn btn-sm btn-primary py-1 px-2 d-flex align-items-center gap-1 shadow-2xs rounded-pill" style="font-size: 0.72rem;" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                    <i data-lucide="plus" style="width: 12px; height: 12px;"></i>
+                    <span>Tải thêm</span>
                 </button>
             </div>
 
@@ -273,21 +315,33 @@
                     <div class="text-center text-muted small py-4">
                         <i data-lucide="file-question" style="width: 32px; height: 32px; color: #94a3b8;" class="mb-2"></i>
                         <p class="mb-2">Chưa có tệp PDF nào.</p>
-                        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal">Tải lên ngay</button>
+                        <button class="btn btn-primary btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#uploadModal">Tải lên ngay</button>
                     </div>
                 <?php else: ?>
                     <?php foreach ($userDocuments as $uDoc): ?>
                         <div class="source-doc-item">
-                            <div class="d-flex align-items-center gap-2 mb-1">
-                                <i data-lucide="file-text" style="width: 16px; height: 16px; color: #6366f1;"></i>
-                                <span class="fw-medium text-dark small text-truncate" title="<?php echo htmlspecialchars($uDoc['original_filename']); ?>">
-                                    <?php echo htmlspecialchars($uDoc['original_filename']); ?>
-                                </span>
+                            <div class="d-flex align-items-start gap-2 mb-2">
+                                <div class="source-doc-icon">
+                                    <i data-lucide="file-text" style="width: 16px; height: 16px;"></i>
+                                </div>
+                                <div class="overflow-hidden flex-grow-1">
+                                    <div class="fw-bold text-dark text-truncate" style="font-size: 0.82rem;" title="<?php echo htmlspecialchars($uDoc['original_filename']); ?>">
+                                        <?php echo htmlspecialchars($uDoc['original_filename']); ?>
+                                    </div>
+                                    <div class="text-muted d-flex align-items-center gap-1 mt-0" style="font-size: 0.70rem;">
+                                        <span class="badge rounded-pill px-1 py-0" style="background: rgba(79, 70, 229, 0.08); color: #4f46e5; font-size: 0.65rem;"><?php echo (int)$uDoc['total_pages']; ?> trang</span>
+                                        <span>&bull;</span>
+                                        <span><?php echo format_bytes((int)($uDoc['file_size'] ?? 0)); ?></span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="d-flex justify-content-between align-items-center text-muted" style="font-size: 0.75rem;">
-                                <span><?php echo (int)$uDoc['total_pages']; ?> trang</span>
-                                <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2" onclick="addDocumentPages(<?php echo $uDoc['id']; ?>)">
-                                    + Thêm tất cả
+                            <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                                <button type="button" class="btn btn-xs btn-light text-secondary p-1 rounded-2" title="Xem nhanh tệp này" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(226, 232, 240, 0.8);" onclick="window.previewDocument ? window.previewDocument(<?php echo $uDoc['id']; ?>, '<?php echo addslashes($uDoc['original_filename']); ?>') : window.open('/documents/view?id=<?php echo $uDoc['id']; ?>', '_blank')">
+                                    <i data-lucide="eye" style="width: 13px; height: 13px;"></i>
+                                </button>
+                                <button type="button" class="btn btn-add-all-pages d-inline-flex align-items-center gap-1" onclick="addDocumentPages(<?php echo $uDoc['id']; ?>)">
+                                    <i data-lucide="layers" style="width: 12px; height: 12px;"></i>
+                                    <span>+ Thêm tất cả</span>
                                 </button>
                             </div>
                         </div>
@@ -807,6 +861,13 @@
 
     // Lưu kế hoạch về Database qua API
     async function savePlan() {
+        if (!window.IS_LOGGED_IN) {
+            window.showRequireLoginModal(() => {
+                savePlan();
+            });
+            return;
+        }
+
         const title = document.getElementById('planTitleInput').value.trim();
         const btnSave = document.getElementById('btnSavePlan');
 
@@ -847,6 +908,14 @@
 
     // Mở modal xuất file
     function openExportModal() {
+        // Yêu cầu đăng nhập trước khi xuất file PDF
+        if (!window.IS_LOGGED_IN) {
+            window.showRequireLoginModal(() => {
+                openExportModal();
+            });
+            return;
+        }
+
         const includedCount = pages.filter(p => p.is_included).length;
         if (includedCount === 0) {
             alert('Không có trang nào được chọn để xuất! Vui lòng chọn ít nhất 1 trang.');
@@ -860,6 +929,18 @@
 
     // Chuyển sang chức năng xuất PDF thực tế
     async function executeExport() {
+        // Yêu cầu đăng nhập trước khi xuất file PDF
+        if (!window.IS_LOGGED_IN) {
+            const expModalEl = document.getElementById('exportModal');
+            const expModalInst = bootstrap.Modal.getInstance(expModalEl);
+            if (expModalInst) expModalInst.hide();
+
+            window.showRequireLoginModal(() => {
+                executeExport();
+            });
+            return;
+        }
+
         // Tự động lưu kế hoạch trước khi xuất để đảm bảo tính bất biến
         await savePlan();
 
@@ -886,7 +967,25 @@
             });
 
             const data = await res.json();
+
+            // Xử lý khi hết Token xử lý
+            if (res.status === 402 || data.out_of_tokens) {
+                const expModalEl = document.getElementById('exportModal');
+                const expModalInst = bootstrap.Modal.getInstance(expModalEl);
+                if (expModalInst) expModalInst.hide();
+
+                window.showOutOfTokensModal({
+                    message: data.message || 'Bạn đã sử dụng hết Token! Vui lòng nâng cấp gói để tiếp tục xuất tài liệu.'
+                });
+                return;
+            }
+
             if (data.success) {
+                // Cập nhật số dư Token tức thì trên Topbar
+                if (data.remaining_tokens !== undefined && typeof window.updateUserTokensBadge === 'function') {
+                    window.updateUserTokensBadge(data.remaining_tokens);
+                }
+
                 exportAlert.className = 'alert alert-success small mb-0 p-3 shadow-sm border-success';
                 exportAlert.innerHTML = `
                     <div class="d-flex align-items-center gap-2 mb-2">
@@ -945,6 +1044,70 @@
 
     // Render ban đầu khi mở trang
     renderPagesGrid();
+
+    async function refreshEditorDocuments() {
+        try {
+            const res = await fetch('/api/documents/list');
+            const data = await res.json();
+            if (!data.success || !Array.isArray(data.documents)) return;
+
+            const listEl = document.getElementById('sourceDocumentsList');
+            if (!listEl) return;
+
+            if (data.documents.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center text-muted small py-4">
+                        <i data-lucide="file-question" style="width: 32px; height: 32px; color: #94a3b8;" class="mb-2"></i>
+                        <p class="mb-2">Chưa có tệp PDF nào.</p>
+                        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal">Tải lên ngay</button>
+                    </div>
+                `;
+            } else {
+                let html = '';
+                const countBadge = document.getElementById('sourceDocsCountBadge');
+                if (countBadge) countBadge.textContent = `${data.documents.length} tệp`;
+
+                data.documents.forEach(doc => {
+                    const sizeStr = doc.formatted_size || '';
+                    html += `
+                        <div class="source-doc-item">
+                            <div class="d-flex align-items-start gap-2 mb-2">
+                                <div class="source-doc-icon">
+                                    <i data-lucide="file-text" style="width: 16px; height: 16px;"></i>
+                                </div>
+                                <div class="overflow-hidden flex-grow-1">
+                                    <div class="fw-bold text-dark text-truncate" style="font-size: 0.82rem;" title="${escapeHtml(doc.original_filename)}">
+                                        ${escapeHtml(doc.original_filename)}
+                                    </div>
+                                    <div class="text-muted d-flex align-items-center gap-1 mt-0" style="font-size: 0.70rem;">
+                                        <span class="badge rounded-pill px-1 py-0" style="background: rgba(79, 70, 229, 0.08); color: #4f46e5; font-size: 0.65rem;">${doc.total_pages} trang</span>
+                                        ${sizeStr ? `<span>&bull;</span><span>${sizeStr}</span>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                                <button type="button" class="btn btn-xs btn-light text-secondary p-1 rounded-2" title="Xem nhanh tệp này" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(226, 232, 240, 0.8);" onclick="window.previewDocument ? window.previewDocument(${doc.id}, '${escapeHtml(doc.original_filename)}') : window.open('/documents/view?id=${doc.id}', '_blank')">
+                                    <i data-lucide="eye" style="width: 13px; height: 13px;"></i>
+                                </button>
+                                <button type="button" class="btn btn-add-all-pages d-inline-flex align-items-center gap-1" onclick="addDocumentPages(${doc.id})">
+                                    <i data-lucide="layers" style="width: 12px; height: 12px;"></i>
+                                    <span>+ Thêm tất cả</span>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                listEl.innerHTML = html;
+            }
+            if (window.lucide) lucide.createIcons();
+        } catch (e) {
+            console.error('Error refreshing editor docs:', e);
+        }
+    }
+
+    window.addEventListener('auth:updated', () => {
+        refreshEditorDocuments();
+    });
 </script>
 
 <?php 
