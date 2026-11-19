@@ -2,6 +2,7 @@ FROM php:8.2-cli
 
 # Cài đặt các gói phụ thuộc hệ điều hành, thư viện đồ họa và công cụ QPDF
 RUN apt-get update && apt-get install -y \
+    ca-certificates \
     qpdf \
     libpng-dev \
     libjpeg-dev \
