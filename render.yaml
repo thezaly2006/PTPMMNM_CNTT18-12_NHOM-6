@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: pdf-workspace
+    env: docker
+    plan: free
+    region: singapore
+    branch: master
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: DB_PORT
+        value: "3306"
